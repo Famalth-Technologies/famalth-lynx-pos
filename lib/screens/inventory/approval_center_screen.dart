@@ -668,6 +668,8 @@ class _ApprovalCenterScreenState extends State<ApprovalCenterScreen> with Single
             final rate = double.tryParse(i['rate']?.toString() ?? '') ?? 0.0;
             final unit = i['unit'] ?? i['item_master']?['unit'] ?? '-';
             final amount = double.tryParse(i['amount']?.toString() ?? '') ?? (qty * rate);
+            final itemName = (i['item_name'] ?? i['item_master']?['item_name'] ?? '-').toString();
+            final brand = (i['brand'] ?? i['item_master']?['brand'] ?? '').toString().trim();
 
             final rateFmt = CurrencyService.format(rate);
             final amountFmt = CurrencyService.format(amount);
@@ -676,7 +678,10 @@ class _ApprovalCenterScreenState extends State<ApprovalCenterScreen> with Single
               children: [
                 Padding(
                   padding: const EdgeInsets.all(8.0),
-                  child: Text(i['item_name'] ?? i['item_master']?['item_name'] ?? '-', style: const TextStyle(fontSize: 12)),
+                  child: Text(
+                    brand.isEmpty ? itemName : '$itemName ($brand)',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ),
                 Padding(
                   padding: const EdgeInsets.all(8.0),

@@ -20,6 +20,10 @@ function deriveHeaderStatus(items: any[]) {
     return 'CLOSED';
 }
 
+function isIssuedRequestStatus(value: any) {
+    return ['PARTIAL', 'CLOSED', 'ISSUED'].includes(String(value || '').trim().toUpperCase());
+}
+
 export const createRequest = async (req: Request, res: Response) => {
     const t = await (req as any).propertyDb.transaction();
     try {
@@ -156,6 +160,12 @@ export const updateRequestItem = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false, message: 'Item not found' });
         }
 
+        const header = await (req as any).propertyDb.models.request_headers.findByPk(item.request_id, { transaction: t });
+        if (header && isIssuedRequestStatus(header.status)) {
+            await t.rollback();
+            return res.status(400).json({ success: false, message: 'Issued requests cannot be modified' });
+        }
+
         const oldData = item.toJSON();
 
         await item.update({ qty, rate }, { transaction: t });
@@ -189,6 +199,12 @@ export const deleteRequestItem = async (req: Request, res: Response) => {
 
         if (!item) {
             return res.status(404).json({ success: false });
+        }
+
+        const header = await (req as any).propertyDb.models.request_headers.findByPk(item.request_id, { transaction: t });
+        if (header && isIssuedRequestStatus(header.status)) {
+            await t.rollback();
+            return res.status(400).json({ success: false, message: 'Items in issued requests cannot be deleted' });
         }
 
         const oldData = item.toJSON();
@@ -226,6 +242,11 @@ export const cancelRequest = async (req: Request, res: Response) => {
 
         if (!header) {
             return res.status(404).json({ success: false });
+        }
+
+        if (isIssuedRequestStatus(header.status)) {
+            await t.rollback();
+            return res.status(400).json({ success: false, message: 'Issued requests cannot be cancelled' });
         }
 
         const oldData = header.toJSON();
@@ -355,10 +376,11 @@ export const modifyRequest = async (req: Request, res: Response) => {
             return res.status(404).json({ success: false });
         }
 
-        if (header.status === 'CLOSED') {
+        if (isIssuedRequestStatus(header.status)) {
+            await t.rollback();
             return res.status(400).json({
                 success: false,
-                message: 'Request closed'
+                message: 'Issued requests cannot be modified'
             });
         }
 
@@ -439,7 +461,7 @@ export const getRequestDetails = async (req: Request, res: Response) => {
             include: [{
                 model: (req as any).propertyDb.models.item_master,
                 as: 'item_master',
-                attributes: ['item_name', 'unit']
+                attributes: ['item_name', 'brand', 'unit']
             }]
         }]
     });

@@ -152,6 +152,7 @@ const modifyIssue = async (req, res) => {
             await item.update({
                 qty: row.qty,
                 rate: row.rate,
+                tax: row.tax,
                 amount: row.qty * row.rate
             }, { transaction: t });
             /// LEDGER ADJUSTMENT

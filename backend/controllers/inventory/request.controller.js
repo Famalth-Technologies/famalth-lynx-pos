@@ -21,6 +21,9 @@ function deriveHeaderStatus(items) {
         return 'OPEN';
     return 'CLOSED';
 }
+function isIssuedRequestStatus(value) {
+    return ['PARTIAL', 'CLOSED', 'ISSUED'].includes(String(value || '').trim().toUpperCase());
+}
 const createRequest = async (req, res) => {
     const t = await req.propertyDb.transaction();
     try {
@@ -134,6 +137,11 @@ const updateRequestItem = async (req, res) => {
         if (!item) {
             return res.status(404).json({ success: false, message: 'Item not found' });
         }
+        const header = await req.propertyDb.models.request_headers.findByPk(item.request_id, { transaction: t });
+        if (header && isIssuedRequestStatus(header.status)) {
+            await t.rollback();
+            return res.status(400).json({ success: false, message: 'Issued requests cannot be modified' });
+        }
         const oldData = item.toJSON();
         await item.update({ qty, rate }, { transaction: t });
         await req.propertyDb.models.audit_logs.create({
@@ -162,6 +170,11 @@ const deleteRequestItem = async (req, res) => {
         const item = await req.propertyDb.models.request_items.findByPk(id);
         if (!item) {
             return res.status(404).json({ success: false });
+        }
+        const header = await req.propertyDb.models.request_headers.findByPk(item.request_id, { transaction: t });
+        if (header && isIssuedRequestStatus(header.status)) {
+            await t.rollback();
+            return res.status(400).json({ success: false, message: 'Items in issued requests cannot be deleted' });
         }
         const oldData = item.toJSON();
         await item.destroy({ transaction: t });
@@ -193,6 +206,10 @@ const cancelRequest = async (req, res) => {
         });
         if (!header) {
             return res.status(404).json({ success: false });
+        }
+        if (isIssuedRequestStatus(header.status)) {
+            await t.rollback();
+            return res.status(400).json({ success: false, message: 'Issued requests cannot be cancelled' });
         }
         const oldData = header.toJSON();
         await header.update({ status: 'CANCELLED' }, { transaction: t });
@@ -309,10 +326,11 @@ const modifyRequest = async (req, res) => {
         if (!header) {
             return res.status(404).json({ success: false });
         }
-        if (header.status === 'CLOSED') {
+        if (isIssuedRequestStatus(header.status)) {
+            await t.rollback();
             return res.status(400).json({
                 success: false,
-                message: 'Request closed'
+                message: 'Issued requests cannot be modified'
             });
         }
         /// UPDATE DEPARTMENT
@@ -380,7 +398,7 @@ const getRequestDetails = async (req, res) => {
                 include: [{
                         model: req.propertyDb.models.item_master,
                         as: 'item_master',
-                        attributes: ['item_name', 'unit']
+                        attributes: ['item_name', 'brand', 'unit']
                     }]
             }]
     });
