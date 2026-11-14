@@ -113,46 +113,71 @@ async function getEffectiveSetting({ db, outlet_id, module, date, transaction }:
     return { effective, nextSetting };
 }
 
-async function getExistingNumbersForModule({ db, req, module, outlet_id, transaction }: { db?: any; req?: any; module: any; outlet_id: any; transaction?: any }) {
+async function getExistingNumbersForModule({
+    db,
+    req,
+    module,
+    outlet_id,
+    startDate,
+    endDate,
+    transaction
+}: {
+    db?: any;
+    req?: any;
+    module: any;
+    outlet_id: any;
+    startDate?: any;
+    endDate?: any;
+    transaction?: any;
+}) {
     const database = db || req?.propertyDb || req?.db;
     if (!database || !database.models) return [];
 
     let Model;
     let numberField: string;
+    let dateField: string = 'created_at';
     const mod = String(module).trim().toUpperCase();
 
     switch (mod) {
         case 'PO':
             Model = database.models.purchase_orders;
             numberField = 'po_no';
+            dateField = 'po_date';
             break;
         case 'KOT':
             Model = database.models.kot_headers;
             numberField = 'kot_no';
+            dateField = 'created_at';
             break;
         case 'RECEIVING':
             Model = database.models.goods_receipts;
             numberField = 'grn_no';
+            dateField = 'receipt_date';
             break;
         case 'INDENT':
             Model = database.models.issue_headers;
             numberField = 'issue_no';
+            dateField = 'issue_date';
             break;
         case 'REQUEST':
             Model = database.models.request_headers;
             numberField = 'request_no';
+            dateField = 'request_date';
             break;
         case 'DAMAGE':
             Model = database.models.damage_headers;
             numberField = 'damage_no';
+            dateField = 'damage_date';
             break;
         case 'SALES':
             Model = database.models.sales_headers;
             numberField = 'sale_no';
+            dateField = 'sale_date';
             break;
         case 'TOKEN':
             Model = database.models.sales_headers;
             numberField = 'token_no';
+            dateField = 'sale_date';
             break;
         case 'CONTRA':
         case 'PAYMENT':
@@ -160,6 +185,7 @@ async function getExistingNumbersForModule({ db, req, module, outlet_id, transac
         case 'JOURNAL':
             Model = database.models.accounting_vouchers;
             numberField = 'voucher_no';
+            dateField = 'voucher_date';
             break;
         default:
             throw new Error(`Unsupported module ${module}`);
@@ -180,9 +206,34 @@ async function getExistingNumbersForModule({ db, req, module, outlet_id, transac
         where.voucher_type = mod;
     }
 
+    if (startDate) {
+        const startStr = String(startDate).substring(0, 10);
+        const startDay = new Date(`${startStr}T00:00:00`);
+        if (!Number.isNaN(startDay.getTime())) {
+            const dateFilter: any = { [Op.gte]: startDay };
+            if (endDate) {
+                const endStr = String(endDate).substring(0, 10);
+                const endDay = new Date(`${endStr}T00:00:00`);
+                if (!Number.isNaN(endDay.getTime())) {
+                    dateFilter[Op.lt] = endDay;
+                }
+            }
+            if (dateField && dateField !== 'created_at') {
+                where[Op.or] = [
+                    { [dateField]: dateFilter },
+                    { created_at: dateFilter }
+                ];
+            } else {
+                where.created_at = dateFilter;
+            }
+        }
+    }
+
     const queryOptions: any = {
         where,
-        attributes: [numberField]
+        attributes: [numberField],
+        order: [['id', 'DESC']],
+        limit: 100
     };
     if (transaction) {
         queryOptions.transaction = transaction;
@@ -219,26 +270,25 @@ async function allocateNextNumber({
     });
 
     if (resolved && resolved.effective) {
-        const { effective } = resolved;
+        const { effective, nextSetting } = resolved;
         const existingNumbers = await getExistingNumbersForModule({
             db: database,
             module: mod,
             outlet_id,
+            startDate: effective.start_date,
+            endDate: nextSetting ? nextSetting.start_date : null,
             transaction
         });
 
-        let nextNo = toWholeNumber(effective.start_no);
-        const lastUsed = toWholeNumber(effective.last_used_no, 0);
-        if (lastUsed >= nextNo) {
-            nextNo = lastUsed + 1;
-        }
-
+        // Always base sequence strictly on the ACTUAL MAXIMUM number committed in the database table
+        let maxSavedNo = toWholeNumber(effective.start_no) - 1;
         for (const value of existingNumbers) {
             const numeric = extractNumericPart(value, effective);
-            if (numeric !== null && numeric >= nextNo) {
-                nextNo = numeric + 1;
+            if (numeric !== null && numeric > maxSavedNo) {
+                maxSavedNo = numeric;
             }
         }
+        const nextNo = maxSavedNo + 1;
 
         try {
             await effective.update({ last_used_no: nextNo }, { transaction });
@@ -290,8 +340,79 @@ async function allocateNextNumber({
     };
 }
 
-async function resolveNextNumber({ req, db, module, date, outlet_id, transaction }: { req?: any; db?: any; module: any; date: any; outlet_id: any; transaction?: any }) {
-    return allocateNextNumber({ req, db, module, date, outlet_id, transaction });
+// PEEK ONLY: purely read-only preview for UI display without reserving or modifying the database
+async function resolveNextNumber({ req, db, module, date, outlet_id }: { req?: any; db?: any; module: any; date: any; outlet_id: any; transaction?: any }) {
+    const database = db || req?.propertyDb || req?.db;
+    const mod = String(module).trim().toUpperCase();
+    const resolved = await getEffectiveSetting({
+        db: database,
+        outlet_id,
+        module: mod,
+        date
+    });
+
+    if (resolved && resolved.effective) {
+        const { effective, nextSetting } = resolved;
+        const existingNumbers = await getExistingNumbersForModule({
+            db: database,
+            module: mod,
+            outlet_id,
+            startDate: effective.start_date,
+            endDate: nextSetting ? nextSetting.start_date : null
+        });
+
+        let maxSavedNo = toWholeNumber(effective.start_no) - 1;
+        for (const value of existingNumbers) {
+            const numeric = extractNumericPart(value, effective);
+            if (numeric !== null && numeric > maxSavedNo) {
+                maxSavedNo = numeric;
+            }
+        }
+        const nextNo = maxSavedNo + 1;
+
+        return {
+            number: `${effective.prefix || ''}${nextNo}${effective.postfix || ''}`,
+            next_no: nextNo
+        };
+    }
+
+    // Fallback peek
+    const existingNumbers = await getExistingNumbersForModule({
+        db: database,
+        module: mod,
+        outlet_id
+    });
+
+    let prefix = `${mod}-`;
+    if (mod === 'SALES') prefix = 'FAM-';
+    else if (mod === 'TOKEN') prefix = 'TK-';
+    else if (mod === 'KOT') prefix = 'KOT-';
+    else if (mod === 'RECEIVING') prefix = 'RC-';
+    else if (mod === 'PO') prefix = 'PO-';
+    else if (mod === 'INDENT') prefix = 'INT-';
+    else if (mod === 'REQUEST') prefix = 'REC-';
+    else if (mod === 'DAMAGE') prefix = 'DMG-';
+    else if (mod === 'CONTRA') prefix = 'CNT-';
+    else if (mod === 'PAYMENT') prefix = 'PAY-';
+    else if (mod === 'RECEIPT') prefix = 'RCT-';
+    else if (mod === 'JOURNAL') prefix = 'JRN-';
+
+    let maxNum = 0;
+    for (const val of existingNumbers) {
+        const str = String(val || '').trim();
+        const m = str.match(/(\d+)$/);
+        if (m) {
+            const n = parseInt(m[1], 10);
+            if (!Number.isNaN(n) && n > maxNum && n < 10000000) {
+                maxNum = n;
+            }
+        }
+    }
+    const nextNo = maxNum > 0 ? maxNum + 1 : 1001;
+    return {
+        number: `${prefix}${nextNo}`,
+        next_no: nextNo
+    };
 }
 
 exports.getSettings = async (req: any, res: any) => {

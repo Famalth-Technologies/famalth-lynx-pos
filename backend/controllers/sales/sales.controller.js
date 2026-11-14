@@ -3454,39 +3454,15 @@ exports.createSale = async (req, res) => {
         const freeBillDiscount = toRoundedAmount(freeBillItems.reduce((sum, row) => sum + toAmount(row.line_total), 0));
         const hasSubscriptionFreeRows = splitItems.free.some((row) => row._subscription_free === true || row.is_advance_free === true);
         const hasSchemeFreeRows = splitItems.free.some((row) => row.is_scheme_free === true && !(row._subscription_free === true || row.is_advance_free === true));
-        let paidSaleNo = String(headerForCreate.sale_no || '').trim();
-        let isDuplicateOrDraft = !paidSaleNo || 
-            paidSaleNo.toUpperCase().startsWith('DRAFT') || 
-            paidSaleNo.toUpperCase().startsWith('TEMP');
-
-        if (!isDuplicateOrDraft) {
-            const existingSale = await req.propertyDb.models.sales_headers.findOne({
-                where: {
-                    outlet_id: req.user.outlet_id,
-                    sale_no: paidSaleNo,
-                    is_deleted: false,
-                    is_latest: true
-                },
-                attributes: ['id', 'sale_no'],
-                transaction: t
-            });
-            if (existingSale) {
-                isDuplicateOrDraft = true;
-            }
-        }
-
-        if (isDuplicateOrDraft) {
-            const allocated = await numberingHelper.allocateNextNumber({
-                db: req.propertyDb,
-                outlet_id: req.user.outlet_id,
-                module: 'SALES',
-                date: headerForCreate.sale_date || new Date(),
-                transaction: t
-            });
-            if (allocated && allocated.number) {
-                paidSaleNo = allocated.number;
-            }
-        }
+        // On actual insert, ALWAYS mint the official sequential bill number atomically from DB
+        const allocated = await numberingHelper.allocateNextNumber({
+            db: req.propertyDb,
+            outlet_id: req.user.outlet_id,
+            module: 'SALES',
+            date: headerForCreate.sale_date || new Date(),
+            transaction: t
+        });
+        let paidSaleNo = allocated?.number || String(headerForCreate.sale_no || '').trim();
 
         let freeSaleNo = splitItems.paid.length > 0 ? incrementSaleNo(paidSaleNo) : paidSaleNo;
         if (splitItems.paid.length > 0 && splitItems.free.length > 0) {

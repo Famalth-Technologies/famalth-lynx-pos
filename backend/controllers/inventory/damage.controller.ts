@@ -38,33 +38,21 @@ export const createDamage = async (req: Request, res: Response) => {
         const outlet_id = (req as any).user.outlet_id;
 
         let effectiveDamageNo = String(header.damage_no || '').trim();
-        let isDuplicateDamage = !effectiveDamageNo || effectiveDamageNo === '0' || effectiveDamageNo.toUpperCase().startsWith('DRAFT');
-        if (!isDuplicateDamage) {
-            const existingDmg = await (req as any).propertyDb.models.damage_headers.findOne({
-                where: { outlet_id, damage_no: effectiveDamageNo },
-                attributes: ['id'],
+        // On actual insert, ALWAYS mint official sequential Damage number atomically from DB
+        try {
+            const numberingHelper = require('./numberingSettingsV2.controller');
+            const resolved = await numberingHelper.allocateNextNumber({
+                db: (req as any).propertyDb,
+                module: 'DAMAGE',
+                date: header.damage_date || new Date(),
+                outlet_id,
                 transaction: t
             });
-            if (existingDmg) {
-                isDuplicateDamage = true;
+            if (resolved && resolved.number) {
+                effectiveDamageNo = resolved.number;
             }
-        }
-        if (isDuplicateDamage) {
-            try {
-                const numberingHelper = require('./numberingSettingsV2.controller');
-                const resolved = await numberingHelper.allocateNextNumber({
-                    db: (req as any).propertyDb,
-                    module: 'DAMAGE',
-                    date: header.damage_date || new Date(),
-                    outlet_id,
-                    transaction: t
-                });
-                if (resolved && resolved.number) {
-                    effectiveDamageNo = resolved.number;
-                }
-            } catch (seqErr: any) {
-                console.warn('[DAMAGE SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
-            }
+        } catch (seqErr: any) {
+            console.warn('[DAMAGE SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
         }
 
         let total = 0;

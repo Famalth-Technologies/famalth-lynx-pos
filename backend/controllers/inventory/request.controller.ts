@@ -38,33 +38,21 @@ export const createRequest = async (req: Request, res: Response) => {
         const user_id = (req as any).user.id;
 
         let effectiveRequestNo = String(open_request_no || '').trim();
-        let isDuplicateRequest = !effectiveRequestNo || effectiveRequestNo === '0' || effectiveRequestNo.toUpperCase().startsWith('DRAFT');
-        if (!isDuplicateRequest) {
-            const existingReq = await (req as any).propertyDb.models.request_headers.findOne({
-                where: { outlet_id, request_no: effectiveRequestNo },
-                attributes: ['id'],
+        // On actual insert, ALWAYS mint official sequential Request number atomically from DB
+        try {
+            const numberingHelper = require('./numberingSettingsV2.controller');
+            const resolved = await numberingHelper.allocateNextNumber({
+                db: (req as any).propertyDb,
+                module: 'REQUEST',
+                date: request_date || new Date(),
+                outlet_id,
                 transaction: t
             });
-            if (existingReq) {
-                isDuplicateRequest = true;
+            if (resolved && resolved.number) {
+                effectiveRequestNo = resolved.number;
             }
-        }
-        if (isDuplicateRequest) {
-            try {
-                const numberingHelper = require('./numberingSettingsV2.controller');
-                const resolved = await numberingHelper.allocateNextNumber({
-                    db: (req as any).propertyDb,
-                    module: 'REQUEST',
-                    date: request_date || new Date(),
-                    outlet_id,
-                    transaction: t
-                });
-                if (resolved && resolved.number) {
-                    effectiveRequestNo = resolved.number;
-                }
-            } catch (seqErr: any) {
-                console.warn('[REQUEST SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
-            }
+        } catch (seqErr: any) {
+            console.warn('[REQUEST SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
         }
 
         // 1️⃣ Create header

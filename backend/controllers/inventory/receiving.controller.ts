@@ -152,33 +152,21 @@ export const createReceiving = async (req: Request, res: Response) => {
         }
 
         let effectiveGrnNo = String(grn_no || '').trim();
-        let isDuplicateGrn = !effectiveGrnNo || effectiveGrnNo === '0' || effectiveGrnNo.toUpperCase().startsWith('DRAFT');
-        if (!isDuplicateGrn) {
-            const existingGrn = await (req as any).propertyDb.models.goods_receipts.findOne({
-                where: { outlet_id, grn_no: effectiveGrnNo },
-                attributes: ['id'],
+        // On actual insert, ALWAYS mint official sequential GRN number atomically from DB
+        try {
+            const numberingHelper = require('./numberingSettingsV2.controller');
+            const resolved = await numberingHelper.allocateNextNumber({
+                db: (req as any).propertyDb,
+                module: 'RECEIVING',
+                date: receipt_date || new Date(),
+                outlet_id,
                 transaction: t
             });
-            if (existingGrn) {
-                isDuplicateGrn = true;
+            if (resolved && resolved.number) {
+                effectiveGrnNo = resolved.number;
             }
-        }
-        if (isDuplicateGrn) {
-            try {
-                const numberingHelper = require('./numberingSettingsV2.controller');
-                const resolved = await numberingHelper.allocateNextNumber({
-                    db: (req as any).propertyDb,
-                    module: 'RECEIVING',
-                    date: receipt_date || new Date(),
-                    outlet_id,
-                    transaction: t
-                });
-                if (resolved && resolved.number) {
-                    effectiveGrnNo = resolved.number;
-                }
-            } catch (seqErr: any) {
-                console.warn('[GRN SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
-            }
+        } catch (seqErr: any) {
+            console.warn('[GRN SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
         }
 
         let total = 0, gst = 0;

@@ -28,34 +28,21 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
         const user_id = (req as any).user.id;
 
         let { po_no, manual_no, supplier_id, po_date, items = [] } = req.body;
-        let poNoStr = String(po_no || '').trim();
-        let isDuplicatePo = !poNoStr || poNoStr === '0' || poNoStr.toUpperCase().startsWith('DRAFT');
-        if (!isDuplicatePo) {
-            const existingPo = await (req as any).propertyDb.models.purchase_orders.findOne({
-                where: { outlet_id, po_no: poNoStr },
-                attributes: ['id'],
+        // On actual insert, ALWAYS mint official sequential PO number atomically from DB
+        try {
+            const numberingHelper = require('./numberingSettingsV2.controller');
+            const resolved = await numberingHelper.allocateNextNumber({
+                db: (req as any).propertyDb,
+                module: 'PO',
+                date: po_date || new Date(),
+                outlet_id,
                 transaction: t
             });
-            if (existingPo) {
-                isDuplicatePo = true;
+            if (resolved && resolved.number) {
+                po_no = resolved.number;
             }
-        }
-        if (isDuplicatePo) {
-            try {
-                const numberingHelper = require('./numberingSettingsV2.controller');
-                const resolved = await numberingHelper.allocateNextNumber({
-                    db: (req as any).propertyDb,
-                    module: 'PO',
-                    date: po_date || new Date(),
-                    outlet_id,
-                    transaction: t
-                });
-                if (resolved && resolved.number) {
-                    po_no = resolved.number;
-                }
-            } catch (seqErr: any) {
-                console.warn('[PO SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
-            }
+        } catch (seqErr: any) {
+            console.warn('[PO SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
         }
         const normalizedItems = items.map((item: any) => ({
             ...item,

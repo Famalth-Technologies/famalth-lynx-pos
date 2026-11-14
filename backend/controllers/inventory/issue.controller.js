@@ -56,33 +56,22 @@ const createIssue = async (req, res) => {
             }
         }
         let effectiveIssueNo = String(header.issue_no || '').trim();
-        let isDuplicateIssue = !effectiveIssueNo || effectiveIssueNo === '0' || effectiveIssueNo.toUpperCase().startsWith('DRAFT');
-        if (!isDuplicateIssue) {
-            const existingIssue = await req.propertyDb.models.issue_headers.findOne({
-                where: { outlet_id, issue_no: effectiveIssueNo },
-                attributes: ['id'],
+        // On actual insert, ALWAYS mint official sequential Indent/Issue number atomically from DB
+        try {
+            const numberingHelper = require('./numberingSettingsV2.controller');
+            const resolved = await numberingHelper.allocateNextNumber({
+                db: req.propertyDb,
+                module: 'INDENT',
+                date: header.issue_date || new Date(),
+                outlet_id,
                 transaction: t
             });
-            if (existingIssue) {
-                isDuplicateIssue = true;
+            if (resolved && resolved.number) {
+                effectiveIssueNo = resolved.number;
             }
         }
-        if (isDuplicateIssue) {
-            try {
-                const numberingHelper = require('./numberingSettingsV2.controller');
-                const resolved = await numberingHelper.allocateNextNumber({
-                    db: req.propertyDb,
-                    module: 'INDENT',
-                    date: header.issue_date || new Date(),
-                    outlet_id,
-                    transaction: t
-                });
-                if (resolved && resolved.number) {
-                    effectiveIssueNo = resolved.number;
-                }
-            } catch (seqErr) {
-                console.warn('[INDENT SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
-            }
+        catch (seqErr) {
+            console.warn('[INDENT SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
         }
 
         const issue = await req.propertyDb.models.issue_headers.create({
