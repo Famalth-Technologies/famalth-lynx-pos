@@ -1721,6 +1721,54 @@ class _SettingsScreenState extends State<SettingsScreen> with TickerProviderStat
                 // 2. SECURITY & GATEWAYS TAB
                 buildTabBody([
                   _customSection(
+                    'Companion Apps & Staff Setup QR',
+                    'Scan or print QR standees to instantly connect Waiter, Billing, Rider, Retailer, and Customer apps to this server (Cloud & LAN).',
+                    [
+                      _settingRow(
+                        title: 'Staff Companion Apps (Universal Setup QR)',
+                        description: 'Generate & print QR standee so Waiter, Billing, Rider, and Retailer apps auto-configure without manual typing.',
+                        isLast: false,
+                        control: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () async {
+                            final targetUrl = (kIsWeb || AppConfig.isCloudServer)
+                                ? AppConfig.baseUrl
+                                : await AppConfig.getLanServerUrl();
+                            if (context.mounted) {
+                              AppSetupQrDialog.show(context, mode: AppSetupQrMode.staff, serverUrl: targetUrl);
+                            }
+                          },
+                          icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+                          label: const Text('Generate Staff QR Standee'),
+                        ),
+                      ),
+                      _settingRow(
+                        title: 'Customer Store & Order QR (Family & Friends)',
+                        description: 'Generate QR code for customer self-ordering, online catalog, appointment booking, and digital dining.',
+                        isLast: true,
+                        control: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF0284C7),
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () async {
+                            final targetUrl = (kIsWeb || AppConfig.isCloudServer)
+                                ? AppConfig.baseUrl
+                                : await AppConfig.getLanServerUrl();
+                            if (context.mounted) {
+                              AppSetupQrDialog.show(context, mode: AppSetupQrMode.customer, serverUrl: targetUrl);
+                            }
+                          },
+                          icon: const Icon(Icons.storefront_rounded, size: 18),
+                          label: const Text('Share Customer Store QR'),
+                        ),
+                      ),
+                    ],
+                  ),
+                  _customSection(
                     'Storage & Tenant Backups',
                     'Enterprise storage analytics, portable outlet snapshots, and server migration.',
                     [
@@ -1732,7 +1780,7 @@ class _SettingsScreenState extends State<SettingsScreen> with TickerProviderStat
                   ),
                   _customSection(
                     'Data & Security',
-                    'Manage your cloud configuration, companion app setup QR, and system backups.',
+                    'Manage your cloud configuration and manual system backups.',
                     [
                       _settingRow(
                         title: 'Enable Cloud Backup',
@@ -1843,7 +1891,7 @@ class _SettingsScreenState extends State<SettingsScreen> with TickerProviderStat
                         _settingRow(
                           title: '1-Click Migrate Store to Cloud',
                           description: 'Seamlessly upload all local store products, customers, and invoices to your online cloud instance.',
-                          isLast: false,
+                          isLast: true,
                           control: FilledButton.icon(
                             style: FilledButton.styleFrom(
                               backgroundColor: const Color(0xFF0284C7),
@@ -1859,27 +1907,6 @@ class _SettingsScreenState extends State<SettingsScreen> with TickerProviderStat
                             label: const Text('Start Migration Wizard'),
                           ),
                         ),
-                      _settingRow(
-                        title: 'Companion Apps Setup QR Standee',
-                        description: 'Generate & print QR standee so Waiter, Billing, Rider, and Retailer apps auto-configure without manual typing.',
-                        isLast: true,
-                        control: FilledButton.icon(
-                          style: FilledButton.styleFrom(
-                            backgroundColor: const Color(0xFF059669),
-                            foregroundColor: Colors.white,
-                          ),
-                          onPressed: () async {
-                            final targetUrl = (kIsWeb || AppConfig.isCloudServer)
-                                ? AppConfig.baseUrl
-                                : await AppConfig.getLanServerUrl();
-                            if (context.mounted) {
-                              AppSetupQrDialog.show(context, serverUrl: targetUrl);
-                            }
-                          },
-                          icon: const Icon(Icons.qr_code_2_rounded, size: 18),
-                          label: const Text('Generate QR Standee'),
-                        ),
-                      ),
                     ],
                   ),
                   _customSection(

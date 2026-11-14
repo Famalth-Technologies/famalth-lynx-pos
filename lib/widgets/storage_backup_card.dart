@@ -14,6 +14,7 @@ import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../core/config/app_config.dart';
+import 'app_setup_qr_dialog.dart';
 
 class StorageBackupCard extends StatefulWidget {
   final bool compact;
@@ -289,20 +290,55 @@ class _StorageBackupCardState extends State<StorageBackupCard> {
                   ),
                 ],
               ),
-              InkWell(
-                onTap: _openManageBackupsDialog,
-                borderRadius: BorderRadius.circular(4),
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                  child: Text(
-                    'Manage backups',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFFEF4444), // Accent action link
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  InkWell(
+                    onTap: () async {
+                      final targetUrl = (kIsWeb || AppConfig.isCloudServer)
+                          ? AppConfig.baseUrl
+                          : await AppConfig.getLanServerUrl();
+                      if (context.mounted) {
+                        AppSetupQrDialog.show(context, serverUrl: targetUrl);
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(4),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(Icons.qr_code_2_rounded, size: 14, color: Color(0xFF059669)),
+                          SizedBox(width: 3),
+                          Text(
+                            'Staff QR',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF059669),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 8),
+                  InkWell(
+                    onTap: _openManageBackupsDialog,
+                    borderRadius: BorderRadius.circular(4),
+                    child: const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      child: Text(
+                        'Manage backups',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFFEF4444), // Accent action link
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1457,6 +1493,18 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                         ),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    tooltip: 'Companion Apps Setup QR Standee',
+                    icon: const Icon(Icons.qr_code_2_rounded, color: Color(0xFF059669)),
+                    onPressed: () async {
+                      final targetUrl = (kIsWeb || AppConfig.isCloudServer)
+                          ? AppConfig.baseUrl
+                          : await AppConfig.getLanServerUrl();
+                      if (context.mounted) {
+                        AppSetupQrDialog.show(context, serverUrl: targetUrl);
+                      }
+                    },
                   ),
                   IconButton(
                     icon: const Icon(Icons.close),
