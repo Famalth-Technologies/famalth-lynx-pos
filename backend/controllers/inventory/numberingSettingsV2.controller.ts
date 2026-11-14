@@ -75,13 +75,21 @@ function extractNumericPart(value: any, setting: any) {
     return parsed;
 }
 
-async function getEffectiveSetting({ db, outlet_id, module, date }: { db: any; outlet_id: any; module: any; date: any }) {
+async function getEffectiveSetting({ db, outlet_id, module, date, transaction }: { db: any; outlet_id: any; module: any; date: any; transaction?: any }) {
     const docDate = normalizeDate(date);
 
-    const settings = await db.models.numbering_settings.findAll({
+    const queryOptions: any = {
         where: { outlet_id: Number(outlet_id), module: String(module).trim().toUpperCase() },
         order: [['start_date', 'DESC']]
-    });
+    };
+    if (transaction) {
+        queryOptions.transaction = transaction;
+        if (transaction.LOCK && transaction.LOCK.UPDATE) {
+            queryOptions.lock = transaction.LOCK.UPDATE;
+        }
+    }
+
+    const settings = await db.models.numbering_settings.findAll(queryOptions);
 
     if (!settings || settings.length === 0) {
         return null;
@@ -105,95 +113,185 @@ async function getEffectiveSetting({ db, outlet_id, module, date }: { db: any; o
     return { effective, nextSetting };
 }
 
-async function getExistingNumbersForModule({ req, module, outlet_id }: { req: any; module: any; outlet_id: any }) {
+async function getExistingNumbersForModule({ db, req, module, outlet_id, transaction }: { db?: any; req?: any; module: any; outlet_id: any; transaction?: any }) {
+    const database = db || req?.propertyDb || req?.db;
+    if (!database || !database.models) return [];
+
     let Model;
     let numberField: string;
+    const mod = String(module).trim().toUpperCase();
 
-    switch (module) {
+    switch (mod) {
         case 'PO':
-            Model = req.propertyDb.models.purchase_orders;
+            Model = database.models.purchase_orders;
             numberField = 'po_no';
             break;
         case 'KOT':
-            Model = req.propertyDb.models.kot_headers;
+            Model = database.models.kot_headers;
             numberField = 'kot_no';
             break;
         case 'RECEIVING':
-            Model = req.propertyDb.models.goods_receipts;
+            Model = database.models.goods_receipts;
             numberField = 'grn_no';
             break;
         case 'INDENT':
-            Model = req.propertyDb.models.issue_headers;
+            Model = database.models.issue_headers;
             numberField = 'issue_no';
             break;
         case 'REQUEST':
-            Model = req.propertyDb.models.request_headers;
+            Model = database.models.request_headers;
             numberField = 'request_no';
             break;
         case 'DAMAGE':
-            Model = req.propertyDb.models.damage_headers;
+            Model = database.models.damage_headers;
             numberField = 'damage_no';
             break;
         case 'SALES':
-            Model = req.propertyDb.models.sales_headers;
+            Model = database.models.sales_headers;
             numberField = 'sale_no';
             break;
         case 'TOKEN':
-            Model = req.propertyDb.models.sales_headers;
+            Model = database.models.sales_headers;
             numberField = 'token_no';
+            break;
+        case 'CONTRA':
+        case 'PAYMENT':
+        case 'RECEIPT':
+        case 'JOURNAL':
+            Model = database.models.accounting_vouchers;
+            numberField = 'voucher_no';
             break;
         default:
             throw new Error(`Unsupported module ${module}`);
     }
 
+    if (!Model) return [];
+
     const where: any = {
-        outlet_id
+        outlet_id: Number(outlet_id)
     };
 
-    if (module === 'SALES') {
+    if (mod === 'SALES') {
         where.is_latest = true;
         where.is_deleted = false;
     }
 
-    const rows = await Model.findAll({
+    if (['CONTRA', 'PAYMENT', 'RECEIPT', 'JOURNAL'].includes(mod)) {
+        where.voucher_type = mod;
+    }
+
+    const queryOptions: any = {
         where,
         attributes: [numberField]
-    });
+    };
+    if (transaction) {
+        queryOptions.transaction = transaction;
+    }
+
+    const rows = await Model.findAll(queryOptions);
 
     return rows.map((row: any) => row[numberField]).filter(Boolean);
 }
 
-async function resolveNextNumber({ req, module, date, outlet_id }: { req: any; module: any; date: any; outlet_id: any }) {
+async function allocateNextNumber({
+    db,
+    req,
+    outlet_id,
+    module,
+    date,
+    transaction
+}: {
+    db?: any;
+    req?: any;
+    outlet_id: any;
+    module: any;
+    date?: any;
+    transaction?: any;
+}) {
+    const database = db || req?.propertyDb || req?.db;
+    const mod = String(module).trim().toUpperCase();
     const resolved = await getEffectiveSetting({
-        db: req.propertyDb,
+        db: database,
         outlet_id,
-        module,
-        date
+        module: mod,
+        date,
+        transaction
     });
 
-    if (!resolved) {
-        return null;
+    if (resolved && resolved.effective) {
+        const { effective } = resolved;
+        const existingNumbers = await getExistingNumbersForModule({
+            db: database,
+            module: mod,
+            outlet_id,
+            transaction
+        });
+
+        let nextNo = toWholeNumber(effective.start_no);
+        const lastUsed = toWholeNumber(effective.last_used_no, 0);
+        if (lastUsed >= nextNo) {
+            nextNo = lastUsed + 1;
+        }
+
+        for (const value of existingNumbers) {
+            const numeric = extractNumericPart(value, effective);
+            if (numeric !== null && numeric >= nextNo) {
+                nextNo = numeric + 1;
+            }
+        }
+
+        try {
+            await effective.update({ last_used_no: nextNo }, { transaction });
+        } catch (_) {}
+
+        return {
+            number: `${effective.prefix || ''}${nextNo}${effective.postfix || ''}`,
+            next_no: nextNo
+        };
     }
 
-    const { effective } = resolved;
+    // Default sequence fallbacks if no numbering setting exists
     const existingNumbers = await getExistingNumbersForModule({
-        req,
-        module,
-        outlet_id
+        db: database,
+        module: mod,
+        outlet_id,
+        transaction
     });
 
-    let nextNo = toWholeNumber(effective.start_no);
-    for (const value of existingNumbers) {
-        const numeric = extractNumericPart(value, effective);
-        if (numeric !== null) {
-            nextNo = Math.max(nextNo, numeric + 1);
+    let prefix = `${mod}-`;
+    if (mod === 'SALES') prefix = 'FAM-';
+    else if (mod === 'TOKEN') prefix = 'TK-';
+    else if (mod === 'KOT') prefix = 'KOT-';
+    else if (mod === 'RECEIVING') prefix = 'RC-';
+    else if (mod === 'PO') prefix = 'PO-';
+    else if (mod === 'INDENT') prefix = 'INT-';
+    else if (mod === 'REQUEST') prefix = 'REC-';
+    else if (mod === 'DAMAGE') prefix = 'DMG-';
+    else if (mod === 'CONTRA') prefix = 'CNT-';
+    else if (mod === 'PAYMENT') prefix = 'PAY-';
+    else if (mod === 'RECEIPT') prefix = 'RCT-';
+    else if (mod === 'JOURNAL') prefix = 'JRN-';
+
+    let maxNum = 0;
+    for (const val of existingNumbers) {
+        const str = String(val || '').trim();
+        const m = str.match(/(\d+)$/);
+        if (m) {
+            const n = parseInt(m[1], 10);
+            if (!Number.isNaN(n) && n > maxNum && n < 10000000) {
+                maxNum = n;
+            }
         }
     }
-
+    const nextNo = maxNum > 0 ? maxNum + 1 : 1001;
     return {
-        number: `${effective.prefix || ''}${nextNo}${effective.postfix || ''}`,
+        number: `${prefix}${nextNo}`,
         next_no: nextNo
     };
+}
+
+async function resolveNextNumber({ req, db, module, date, outlet_id, transaction }: { req?: any; db?: any; module: any; date: any; outlet_id: any; transaction?: any }) {
+    return allocateNextNumber({ req, db, module, date, outlet_id, transaction });
 }
 
 exports.getSettings = async (req: any, res: any) => {
@@ -342,6 +440,7 @@ exports.getNextNumber = async (req: any, res: any) => {
 exports.getEffectiveSetting = getEffectiveSetting;
 exports.extractNumericPart = extractNumericPart;
 exports.resolveNextNumber = resolveNextNumber;
+exports.allocateNextNumber = allocateNextNumber;
 
 
 module.exports = exports;

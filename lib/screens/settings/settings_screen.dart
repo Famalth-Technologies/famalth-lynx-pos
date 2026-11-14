@@ -1730,116 +1730,116 @@ class _SettingsScreenState extends State<SettingsScreen> with TickerProviderStat
                       ),
                     ],
                   ),
-                  if (AppConfig.isLocalServer)
-                    _customSection(
-                      'Data & Security',
-                      'Manage your cloud configuration and manual offline backups.',
-                      [
-                        _settingRow(
-                          title: 'Enable Cloud Backup',
-                          description: 'Automatically sync your store data to the Cloud',
-                          control: Switch.adaptive(
-                            value: s.isCloudEnabled,
-                            onChanged: (bool newValue) async {
-                              setState(() => s.isCloudEnabled = newValue);
-                              final success = await BackupService.toggleCloudSync(newValue);
-                              ctrl.save(s);
-                              if (mounted) {
-                                if (success) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text(newValue
-                                          ? 'Cloud backup enabled successfully!'
-                                          : 'Cloud backup paused.'),
-                                      backgroundColor: newValue ? Colors.green : Colors.orange,
-                                    ),
-                                  );
-                                } else {
-                                  setState(() => s.isCloudEnabled = !newValue);
-                                  showErrorSnackbar('Failed to update setting. Check internet.');
-                                }
+                  _customSection(
+                    'Data & Security',
+                    'Manage your cloud configuration, companion app setup QR, and system backups.',
+                    [
+                      _settingRow(
+                        title: 'Enable Cloud Backup',
+                        description: 'Automatically sync your store data to the Cloud',
+                        control: Switch.adaptive(
+                          value: s.isCloudEnabled,
+                          onChanged: (bool newValue) async {
+                            setState(() => s.isCloudEnabled = newValue);
+                            final success = await BackupService.toggleCloudSync(newValue);
+                            ctrl.save(s);
+                            if (mounted) {
+                              if (success) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(newValue
+                                        ? 'Cloud backup enabled successfully!'
+                                        : 'Cloud backup paused.'),
+                                    backgroundColor: newValue ? Colors.green : Colors.orange,
+                                  ),
+                                );
+                              } else {
+                                setState(() => s.isCloudEnabled = !newValue);
+                                showErrorSnackbar('Failed to update setting. Check internet.');
                               }
-                            },
-                          ),
+                            }
+                          },
                         ),
-                        _settingRow(
-                          title: 'Create Manual Backup',
-                          description: 'Export an isolated outlet archive (.fambak) or full encrypted system snapshot (.enc) to your Downloads folder.',
-                          control: Wrap(
-                            spacing: 10,
-                            runSpacing: 8,
-                            children: [
-                              FilledButton.icon(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xFFEF4444),
-                                  foregroundColor: Colors.white,
-                                ),
-                                onPressed: (_isCreatingFambakBackup || _isCreatingEncBackup)
-                                    ? null
-                                    : () async {
-                                        setState(() => _isCreatingFambakBackup = true);
-                                        try {
-                                          final savedPath = await BackupService.createAndSaveLocalFambakBackup(scope: 'OUTLET');
-                                          if (!mounted) return;
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('Outlet .fambak backup saved to ' + savedPath),
-                                              backgroundColor: Colors.green,
-                                            ),
-                                          );
-                                        } catch (e) {
-                                          if (!mounted) return;
-                                          showErrorSnackbar('Failed to create .fambak backup: ' + e.toString());
-                                        } finally {
-                                          if (mounted) {
-                                            setState(() => _isCreatingFambakBackup = false);
-                                          }
-                                        }
-                                      },
-                                icon: _isCreatingFambakBackup
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                    : const Icon(Icons.archive_outlined, size: 18),
-                                label: Text(_isCreatingFambakBackup ? 'Exporting...' : 'Create .fambak Backup'),
+                      ),
+                      _settingRow(
+                        title: 'Create Manual Backup',
+                        description: 'Export an isolated outlet archive (.fambak) or full encrypted system snapshot (.enc) to your Downloads folder.',
+                        control: Wrap(
+                          spacing: 10,
+                          runSpacing: 8,
+                          children: [
+                            FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xFFEF4444),
+                                foregroundColor: Colors.white,
                               ),
-                              FilledButton.icon(
-                                onPressed: (_isCreatingEncBackup || _isCreatingFambakBackup)
-                                    ? null
-                                    : () async {
-                                        setState(() => _isCreatingEncBackup = true);
-                                        try {
-                                          final savedPath = await BackupService.createAndSaveLocalEncBackup();
-                                          if (!mounted) return;
-                                          ScaffoldMessenger.of(context).showSnackBar(
-                                            SnackBar(
-                                              content: Text('.enc backup saved to ' + savedPath),
-                                              backgroundColor: Colors.green,
-                                            ),
-                                          );
-                                        } catch (e) {
-                                          if (!mounted) return;
-                                          showErrorSnackbar('Failed to create backup: ' + e.toString());
-                                        } finally {
-                                          if (mounted) {
-                                            setState(() => _isCreatingEncBackup = false);
-                                          }
+                              onPressed: (_isCreatingFambakBackup || _isCreatingEncBackup)
+                                  ? null
+                                  : () async {
+                                      setState(() => _isCreatingFambakBackup = true);
+                                      try {
+                                        final savedPath = await BackupService.createAndSaveLocalFambakBackup(scope: 'OUTLET');
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('Outlet .fambak backup saved: ' + savedPath),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        showErrorSnackbar('Failed to create .fambak backup: ' + e.toString());
+                                      } finally {
+                                        if (mounted) {
+                                          setState(() => _isCreatingFambakBackup = false);
                                         }
-                                      },
-                                icon: _isCreatingEncBackup
-                                    ? const SizedBox(
-                                        width: 16,
-                                        height: 16,
-                                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                                      )
-                                    : const Icon(Icons.enhanced_encryption_outlined, size: 18),
-                                label: Text(_isCreatingEncBackup ? 'Backing up...' : 'Create .enc Backup'),
-                              ),
-                            ],
-                          ),
+                                      }
+                                    },
+                              icon: _isCreatingFambakBackup
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : const Icon(Icons.archive_outlined, size: 18),
+                              label: Text(_isCreatingFambakBackup ? 'Exporting...' : 'Create .fambak Backup'),
+                            ),
+                            FilledButton.icon(
+                              onPressed: (_isCreatingEncBackup || _isCreatingFambakBackup)
+                                  ? null
+                                  : () async {
+                                      setState(() => _isCreatingEncBackup = true);
+                                      try {
+                                        final savedPath = await BackupService.createAndSaveLocalEncBackup();
+                                        if (!mounted) return;
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('.enc backup saved: ' + savedPath),
+                                            backgroundColor: Colors.green,
+                                          ),
+                                        );
+                                      } catch (e) {
+                                        if (!mounted) return;
+                                        showErrorSnackbar('Failed to create backup: ' + e.toString());
+                                      } finally {
+                                        if (mounted) {
+                                          setState(() => _isCreatingEncBackup = false);
+                                        }
+                                      }
+                                    },
+                              icon: _isCreatingEncBackup
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                    )
+                                  : const Icon(Icons.enhanced_encryption_outlined, size: 18),
+                              label: Text(_isCreatingEncBackup ? 'Backing up...' : 'Create .enc Backup'),
+                            ),
+                          ],
                         ),
+                      ),
+                      if (AppConfig.isLocalServer)
                         _settingRow(
                           title: '1-Click Migrate Store to Cloud',
                           description: 'Seamlessly upload all local store products, customers, and invoices to your online cloud instance.',
@@ -1859,27 +1859,29 @@ class _SettingsScreenState extends State<SettingsScreen> with TickerProviderStat
                             label: const Text('Start Migration Wizard'),
                           ),
                         ),
-                        _settingRow(
-                          title: 'Companion Apps Setup QR Standee',
-                          description: 'Generate & print QR standee so Waiter, Billing, Rider, and Retailer apps auto-configure without manual typing.',
-                          isLast: true,
-                          control: FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF059669),
-                              foregroundColor: Colors.white,
-                            ),
-                            onPressed: () async {
-                              final lanUrl = await AppConfig.getLanServerUrl();
-                              if (context.mounted) {
-                                AppSetupQrDialog.show(context, serverUrl: lanUrl);
-                              }
-                            },
-                            icon: const Icon(Icons.qr_code_2_rounded, size: 18),
-                            label: const Text('Generate QR Standee'),
+                      _settingRow(
+                        title: 'Companion Apps Setup QR Standee',
+                        description: 'Generate & print QR standee so Waiter, Billing, Rider, and Retailer apps auto-configure without manual typing.',
+                        isLast: true,
+                        control: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF059669),
+                            foregroundColor: Colors.white,
                           ),
+                          onPressed: () async {
+                            final targetUrl = (kIsWeb || AppConfig.isCloudServer)
+                                ? AppConfig.baseUrl
+                                : await AppConfig.getLanServerUrl();
+                            if (context.mounted) {
+                              AppSetupQrDialog.show(context, serverUrl: targetUrl);
+                            }
+                          },
+                          icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+                          label: const Text('Generate QR Standee'),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
+                  ),
                   _customSection(
                     'Payment Gateways & Digital Wallets',
                     'Configure UPI, Stripe, Square, Razorpay, PayPal, M-Pesa, and POS settlement modes in the unified Payment & Settlement Management console.',

@@ -30,12 +30,41 @@ const createRequest = async (req, res) => {
         const { department, request_date, open_request_no, items = [] } = req.body;
         const outlet_id = req.user.outlet_id;
         const user_id = req.user.id;
+        let effectiveRequestNo = String(open_request_no || '').trim();
+        let isDuplicateRequest = !effectiveRequestNo || effectiveRequestNo === '0' || effectiveRequestNo.toUpperCase().startsWith('DRAFT');
+        if (!isDuplicateRequest) {
+            const existingReq = await req.propertyDb.models.request_headers.findOne({
+                where: { outlet_id, request_no: effectiveRequestNo },
+                attributes: ['id'],
+                transaction: t
+            });
+            if (existingReq) {
+                isDuplicateRequest = true;
+            }
+        }
+        if (isDuplicateRequest) {
+            try {
+                const numberingHelper = require('./numberingSettingsV2.controller');
+                const resolved = await numberingHelper.allocateNextNumber({
+                    db: req.propertyDb,
+                    module: 'REQUEST',
+                    date: request_date || new Date(),
+                    outlet_id,
+                    transaction: t
+                });
+                if (resolved && resolved.number) {
+                    effectiveRequestNo = resolved.number;
+                }
+            } catch (seqErr) {
+                console.warn('[REQUEST SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
+            }
+        }
         // 1️⃣ Create header
         const header = await req.propertyDb.models.request_headers.create({
-            request_no: open_request_no,
+            request_no: effectiveRequestNo,
             department,
             request_date,
-            open_request_no,
+            open_request_no: effectiveRequestNo,
             status: 'OPEN',
             approval_status: 'PENDING',
             outlet_id,

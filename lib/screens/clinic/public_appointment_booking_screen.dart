@@ -2806,7 +2806,7 @@ class _PatientRegistrationBottomSheetState extends State<_PatientRegistrationBot
                             keyboardType: TextInputType.phone,
                             decoration: InputDecoration(
                               labelText: 'Mobile Phone *',
-                              hintText: 'e.g. 6395059482',
+                              hintText: 'e.g. 9876543210',
                               prefixIcon: const Icon(Icons.phone_android_rounded),
                               border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
                               isDense: true,

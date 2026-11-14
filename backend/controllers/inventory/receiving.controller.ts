@@ -151,6 +151,36 @@ export const createReceiving = async (req: Request, res: Response) => {
             });
         }
 
+        let effectiveGrnNo = String(grn_no || '').trim();
+        let isDuplicateGrn = !effectiveGrnNo || effectiveGrnNo === '0' || effectiveGrnNo.toUpperCase().startsWith('DRAFT');
+        if (!isDuplicateGrn) {
+            const existingGrn = await (req as any).propertyDb.models.goods_receipts.findOne({
+                where: { outlet_id, grn_no: effectiveGrnNo },
+                attributes: ['id'],
+                transaction: t
+            });
+            if (existingGrn) {
+                isDuplicateGrn = true;
+            }
+        }
+        if (isDuplicateGrn) {
+            try {
+                const numberingHelper = require('./numberingSettingsV2.controller');
+                const resolved = await numberingHelper.allocateNextNumber({
+                    db: (req as any).propertyDb,
+                    module: 'RECEIVING',
+                    date: receipt_date || new Date(),
+                    outlet_id,
+                    transaction: t
+                });
+                if (resolved && resolved.number) {
+                    effectiveGrnNo = resolved.number;
+                }
+            } catch (seqErr: any) {
+                console.warn('[GRN SEQ] Auto-resolve numbering warning:', seqErr?.message || seqErr);
+            }
+        }
+
         let total = 0, gst = 0;
         items.forEach((i: any) => {
             const lineAmt = (Number(i.qty) || 0) * (Number(i.rate) || 0);
@@ -195,7 +225,7 @@ export const createReceiving = async (req: Request, res: Response) => {
         // 1️⃣ CREATE GRN
         const grn = await (req as any).propertyDb.models.goods_receipts.create({
             outlet_id,
-            grn_no,
+            grn_no: effectiveGrnNo,
             manual_no,
             po_no,
             supplier_id,
@@ -255,7 +285,7 @@ export const createReceiving = async (req: Request, res: Response) => {
                 item_code: i.code,
                 txn_date: receipt_date,
                 txn_type: 'IN',
-                ref_no: grn_no,
+                ref_no: effectiveGrnNo,
                 qty_in: i.qty,
                 transaction: t
             });
@@ -282,13 +312,13 @@ export const createReceiving = async (req: Request, res: Response) => {
             transaction_type: 'PURCHASE_GRN',
             reference_type: 'SUPPLIER_BILL',
             reference_id: createdBill.id,
-            reference_no: grn_no,
+            reference_no: effectiveGrnNo,
             party_name: supplier?.supplier_name || null,
             payment_method: 'CREDIT',
             amount_in: 0,
             amount_out: 0,
             adjustment_amount: netAmount,
-            notes: `Stock received against GRN #${grn_no} (Bill #${supplier_bill_no || 'N/A'}) - outstanding ${netAmount}`,
+            notes: `Stock received against GRN #${effectiveGrnNo} (Bill #${supplier_bill_no || 'N/A'}) - outstanding ${netAmount}`,
             created_by: (req as any).user.id,
             transaction: t
         });
@@ -343,12 +373,12 @@ export const createReceiving = async (req: Request, res: Response) => {
             const supplier = await (req as any).propertyDb.models.supplier_master.findByPk(supplier_id);
             const header = await (req as any).propertyDb.models.accounting_vouchers.create({
                 outlet_id,
-                voucher_no: grn_no,
+                voucher_no: effectiveGrnNo,
                 voucher_type: 'PURCHASE',
                 voucher_date: receipt_date,
                 total_debit: netAmount,
                 total_credit: netAmount,
-                narration: `Purchase GRN #${grn_no} received from ${supplier?.supplier_name || 'Vendor'} (Bill No: ${supplier_bill_no || 'N/A'})`,
+                narration: `Purchase GRN #${effectiveGrnNo} received from ${supplier?.supplier_name || 'Vendor'} (Bill No: ${supplier_bill_no || 'N/A'})`,
                 payment_mode: 'CREDIT',
                 status: 'POSTED',
                 created_by: (req as any).user.id
@@ -379,7 +409,7 @@ export const createReceiving = async (req: Request, res: Response) => {
         res.json({
             success: true,
             message: 'Stock received & supplier bill created',
-            grn_no
+            grn_no: effectiveGrnNo
         });
 
     } catch (err: any) {

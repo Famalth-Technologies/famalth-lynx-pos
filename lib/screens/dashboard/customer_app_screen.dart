@@ -33,6 +33,7 @@ import '../../controllers/settings/system_settings_controller.dart';
 import '../../core/currency/currency_service.dart';
 import '../../core/utils/country_tax_helper.dart';
 import '../../core/settings/local_preferences.dart';
+import 'server_config_screen.dart';
 import 'package:collection/collection.dart';
 import '../../models/inventory/purchase_order_model.dart';
 import '../../models/inventory/purchase_item_model.dart';
@@ -3995,6 +3996,22 @@ class _CustomerAppScreenState extends State<CustomerAppScreen> {
                     ? _currentUser!.propertyName
                     : 'Customer Shopping App',
                 mode: AppSetupQrMode.customer,
+              );
+            },
+          ),
+          const Divider(),
+          ListTile(
+            leading: const Icon(Icons.dns_rounded, color: Color(0xFFD97706)),
+            title: const Text('Store Connection / Change Server'),
+            subtitle: Text('Connected to: ${AppConfig.baseUrl}', style: const TextStyle(fontSize: 11), maxLines: 1, overflow: TextOverflow.ellipsis),
+            trailing: const Icon(Icons.chevron_right, size: 20),
+            onTap: () {
+              Navigator.of(context).pop();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ServerConfigScreen(nextScreen: CustomerAppScreen()),
+                ),
               );
             },
           ),

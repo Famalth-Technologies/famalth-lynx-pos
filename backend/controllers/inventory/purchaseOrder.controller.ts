@@ -28,14 +28,27 @@ export const createPurchaseOrder = async (req: Request, res: Response) => {
         const user_id = (req as any).user.id;
 
         let { po_no, manual_no, supplier_id, po_date, items = [] } = req.body;
-        if (!po_no || po_no === '0' || String(po_no).trim() === '') {
+        let poNoStr = String(po_no || '').trim();
+        let isDuplicatePo = !poNoStr || poNoStr === '0' || poNoStr.toUpperCase().startsWith('DRAFT');
+        if (!isDuplicatePo) {
+            const existingPo = await (req as any).propertyDb.models.purchase_orders.findOne({
+                where: { outlet_id, po_no: poNoStr },
+                attributes: ['id'],
+                transaction: t
+            });
+            if (existingPo) {
+                isDuplicatePo = true;
+            }
+        }
+        if (isDuplicatePo) {
             try {
                 const numberingHelper = require('./numberingSettingsV2.controller');
-                const resolved = await numberingHelper.resolveNextNumber({
-                    req,
+                const resolved = await numberingHelper.allocateNextNumber({
+                    db: (req as any).propertyDb,
                     module: 'PO',
                     date: po_date || new Date(),
-                    outlet_id
+                    outlet_id,
+                    transaction: t
                 });
                 if (resolved && resolved.number) {
                     po_no = resolved.number;

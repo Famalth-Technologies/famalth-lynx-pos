@@ -1931,59 +1931,36 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                     ),
                     const SizedBox(height: 12),
 
-                    // Trigger Buttons Row (Restricted on Client PC)
-                    if (AppConfig.isClientPc)
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-                        decoration: BoxDecoration(
-                          color: Colors.amber.shade50,
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(color: Colors.amber.shade300),
-                        ),
-                        child: Row(
-                          children: [
-                            Icon(Icons.lock_clock_rounded, color: Colors.amber.shade900, size: 20),
-                            const SizedBox(width: 10),
-                            const Expanded(
-                              child: Text(
-                                'Client Terminal Notice: Database backup & restore operations are restricted to the Main Server PC. Backups cannot be initiated from this client terminal.',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF92400E)),
-                              ),
-                            ),
-                          ],
-                        ),
-                      )
-                    else
-                      Wrap(
-                        spacing: 10,
-                        runSpacing: 8,
-                        children: [
-                          ElevatedButton.icon(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFFEF4444),
-                              foregroundColor: Colors.white,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            icon: const Icon(Icons.download_for_offline_rounded, size: 16),
-                            label: Text(
-                              _backupScope == 'ALL' ? 'Create Complete Enterprise Backup (.fambak)' : 'Create Outlet Backup (.fambak)',
-                              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
-                            ),
-                            onPressed: _isActionInProgress ? null : _takeFambakBackup,
+                    // Trigger Buttons Row (Available for all authenticated admins across local and cloud)
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 8,
+                      children: [
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFFEF4444),
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                           ),
-                          OutlinedButton.icon(
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                            ),
-                            icon: const Icon(Icons.upload_file_rounded, size: 16),
-                            label: const Text('Upload & Pre-Inspect Archive (.fambak)', style: TextStyle(fontSize: 12)),
-                            onPressed: _isActionInProgress ? null : _uploadAndRestoreExternalFile,
+                          icon: const Icon(Icons.download_for_offline_rounded, size: 16),
+                          label: Text(
+                            _backupScope == 'ALL' ? 'Create Complete Enterprise Backup (.fambak)' : 'Create Outlet Backup (.fambak)',
+                            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12),
                           ),
-                        ],
-                      ),
+                          onPressed: _isActionInProgress ? null : _takeFambakBackup,
+                        ),
+                        OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          icon: const Icon(Icons.upload_file_rounded, size: 16),
+                          label: const Text('Upload & Pre-Inspect Archive (.fambak)', style: TextStyle(fontSize: 12)),
+                          onPressed: _isActionInProgress ? null : _uploadAndRestoreExternalFile,
+                        ),
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -2233,7 +2210,7 @@ class _ManageBackupsDialogState extends State<_ManageBackupsDialog> {
                                   tooltip: 'Email Download Link (Off-Site Disaster Recovery)',
                                   onPressed: () => _showEmailBackupDialog(filename, scope: scope),
                                 ),
-                                if (!AppConfig.isClientPc) ...[
+                                if (_isEnterpriseConsole || AppConfig.isLocalServer || AppConfig.isCloudServer) ...[
                                   ElevatedButton.icon(
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: Colors.orange.shade800,

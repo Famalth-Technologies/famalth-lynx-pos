@@ -1,9 +1,11 @@
-import 'dart:io' show Platform;
+import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:retailpos/screens/splash_screen.dart';
 
 import '../../core/api/api_client.dart';
@@ -46,7 +48,7 @@ class _ServerConfigScreenState extends State<ServerConfigScreen>
     _isScanMode = isMobileOrWeb;
 
     _scannerController = MobileScannerController(
-      formats: const [BarcodeFormat.qrCode, BarcodeFormat.all],
+      formats: const [BarcodeFormat.qrCode],
       detectionSpeed: DetectionSpeed.normal,
       facing: CameraFacing.back,
       torchEnabled: false,
@@ -171,19 +173,58 @@ class _ServerConfigScreenState extends State<ServerConfigScreen>
       final result = await FilePicker.pickFiles(
         type: FileType.image,
         allowMultiple: false,
+        withData: true,
       );
       if (result == null || result.files.isEmpty) return;
-      final path = result.files.single.path;
-      if (path == null) return;
 
       setState(() => _isLoading = true);
 
-      final BarcodeCapture? capture = await _scannerController.analyzeImage(path);
+      String? filePath = result.files.single.path;
+      File? tempFile;
+
+      if (!kIsWeb) {
+        if (filePath == null || filePath.isEmpty || !File(filePath).existsSync()) {
+          if (result.files.single.bytes != null) {
+            final tempDir = await getTemporaryDirectory();
+            final ext = result.files.single.extension ?? 'png';
+            tempFile = File(p.join(tempDir.path, 'scanned_qr_${DateTime.now().millisecondsSinceEpoch}.$ext'));
+            await tempFile.writeAsBytes(result.files.single.bytes!, flush: true);
+            filePath = tempFile.path;
+          }
+        }
+      }
+
+      if (filePath == null || filePath.isEmpty) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Could not read image file. Please try taking a photo or choosing from local storage."),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
+
+      BarcodeCapture? capture;
+      try {
+        capture = await _scannerController.analyzeImage(filePath);
+      } catch (scanErr) {
+        try {
+          final standaloneScanner = MobileScannerController(formats: const [BarcodeFormat.qrCode]);
+          capture = await standaloneScanner.analyzeImage(filePath);
+          await standaloneScanner.dispose();
+        } catch (_) {}
+      } finally {
+        if (tempFile != null && await tempFile.exists()) {
+          try { await tempFile.delete(); } catch (_) {}
+        }
+      }
+
       if (capture == null || capture.barcodes.isEmpty) {
         if (!mounted) return;
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("No QR code found in selected image. Please choose a clear QR code image."),
+            content: Text("No QR code found in selected image. Please make sure the QR code is clearly visible and well-lit."),
             backgroundColor: Colors.orange,
           ),
         );
@@ -193,6 +234,14 @@ class _ServerConfigScreenState extends State<ServerConfigScreen>
       final rawVal = capture.barcodes.first.rawValue;
       if (rawVal != null && rawVal.trim().isNotEmpty) {
         await _processScannedData(rawVal);
+      } else {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("QR code was detected but could not be decoded. Please choose a sharper image."),
+            backgroundColor: Colors.orange,
+          ),
+        );
       }
     } catch (e) {
       if (!mounted) return;
